@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:test_tflite/classifier.dart';
@@ -20,6 +21,7 @@ class _DogDetectionScreenState extends State<DogDetectionPage> {
   File? filePath;
   String label = Constants.introLabel;
   String content = Constants.introContent;
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -44,84 +46,104 @@ class _DogDetectionScreenState extends State<DogDetectionPage> {
         ),
         backgroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              filePath != null
-                  ? CircleAvatar(
-                      radius: 100,
-                      backgroundImage: FileImage(filePath!),
-                    )
-                  : const CircleAvatar(
-                      radius: 100,
-                      backgroundImage: AssetImage('assets/dog_bg.jpg'),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    filePath != null
+                        ? CircleAvatar(
+                            radius: 100,
+                            backgroundImage: FileImage(filePath!),
+                          )
+                        : const CircleAvatar(
+                            radius: 100,
+                            backgroundImage: AssetImage('assets/dog_bg.jpg'),
+                          ),
+                    const SizedBox(height: 20),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple,
+                      ),
                     ),
-              const SizedBox(height: 20),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple,
+                    Text(
+                      content,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 20),
+                    if (hasPredicted) breedMatchContainer(predictedResults),
+                    const SizedBox(
+                      height: 50,
+                    )
+                  ],
                 ),
               ),
-              Text(
-                content,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              if (hasPredicted) breedMatchContainer(predictedResults),
-              const SizedBox(
-                height: 50,
-              )
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            Expanded(
-              child: customButton(
-                icon: Icons.camera,
-                label: Constants.takePhotoText,
-                onTap: () async {
-                  final ImagePicker picker = ImagePicker();
-                  final XFile? image =
-                      await picker.pickImage(source: ImageSource.gallery);
+            ),
+      bottomNavigationBar: isLoading
+          ? const SizedBox()
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: customButton(
+                      icon: Icons.camera,
+                      label: Constants.takePhotoText,
+                      onTap: () async {
+                        final ImagePicker picker = ImagePicker();
+                        final XFile? image =
+                            await picker.pickImage(source: ImageSource.gallery);
 
-                  if (image == null) return;
+                        if (image == null) return;
 
-                  await onTakeImageDone(image);
-                },
+                        final imageCrop = await cropImages(image);
+                        XFile croppedXFile = XFile(imageCrop.path);
+                        setState(() {
+                          isLoading = true;
+                        });
+                        await onTakeImageDone(croppedXFile);
+                        setState(() {
+                          isLoading = false;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: customButton(
+                      icon: Icons.image,
+                      label: Constants.gallery,
+                      onTap: () async {
+                        final ImagePicker picker = ImagePicker();
+
+                        final XFile? image =
+                            await picker.pickImage(source: ImageSource.gallery);
+
+                        if (image == null) return;
+                        final imageCrop = await cropImages(image);
+                        XFile croppedXFile = XFile(imageCrop.path);
+                        setState(() {
+                          isLoading = true;
+                        });
+                        await onTakeImageDone(croppedXFile);
+                        setState(() {
+                          isLoading = false;
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: customButton(
-                icon: Icons.image,
-                label: Constants.gallery,
-                onTap: () async {
-                  final ImagePicker picker = ImagePicker();
-
-                  final XFile? image =
-                      await picker.pickImage(source: ImageSource.gallery);
-
-                  if (image == null) return;
-                  await onTakeImageDone(image);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -258,6 +280,8 @@ class _DogDetectionScreenState extends State<DogDetectionPage> {
       setState(() {
         label = Constants.noDogLabel;
         content = Constants.noDogContent;
+        predictedResults = [];
+        hasPredicted = false;
       });
       return;
     }
@@ -275,5 +299,30 @@ class _DogDetectionScreenState extends State<DogDetectionPage> {
       });
     }
     return;
+  }
+
+  Future<CroppedFile> cropImages(XFile image) async {
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: image.path,
+      aspectRatioPresets: [
+        CropAspectRatioPreset.square,
+      ],
+      maxHeight: 224,
+      maxWidth: 224,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Image',
+          toolbarColor: Colors.purpleAccent,
+          toolbarWidgetColor: Colors.white,
+          initAspectRatio: CropAspectRatioPreset.original,
+          lockAspectRatio: true,
+        ),
+        IOSUiSettings(
+          title: 'Crop Image',
+        ),
+      ],
+    );
+
+    return croppedFile!;
   }
 }

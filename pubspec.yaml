@@ -40,10 +40,9 @@ dependencies:
   camera: 0.10.5+9
   video_player: 2.8.5
   awesome_circular_chart: 1.0.0
-  riverpod: 2.4.9
-  flutter_riverpod: 2.4.9
-  freezed_annotation: 2.4.1
   percent_indicator: 4.2.1
+  image_cropper: 6.0.0
+  image: ^3.0.1
 
 dev_dependencies:
   flutter_test:
@@ -55,8 +54,6 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
-  build_runner: 2.4.9
-  freezed: ^2.4.5
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
